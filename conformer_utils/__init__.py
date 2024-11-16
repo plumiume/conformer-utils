@@ -139,7 +139,7 @@ def conv_size(size: Tensor, kernel_size: Tensor, stride: Tensor, padding: Tensor
     Returns:
         Tensor: The output size after the convolution operation.
     """
-    return torch.floor_divide((size + 2 * padding - dilation * (kernel_size - 1) - 1), stride + 1)
+    return torch.floor_divide((size + 2 * padding - dilation * (kernel_size - 1) - 1), stride) + 1
 
 def conv_transpose_size(size: Tensor, kernel_size: Tensor, stride: Tensor, padding: Tensor, dilation: Tensor, output_padding: Tensor) -> Tensor:
     """Compute the output size of a transposed convolution operation.
