@@ -139,7 +139,7 @@ def conv_size(size: Tensor, kernel_size: Tensor, stride: Tensor, padding: Tensor
     Returns:
         Tensor: The output size after the convolution operation.
     """
-    return (size - (kernel_size - 1) * dilation + 2 * padding).div(stride, rounding_mode='floor') + 1
+    return ((size + 2 * padding - dilation * (kernel_size - 1) - 1) / stride + 1).floor()
 
 def conv_transpose_size(size: Tensor, kernel_size: Tensor, stride: Tensor, padding: Tensor, dilation: Tensor, output_padding: Tensor) -> Tensor:
     """Compute the output size of a transposed convolution operation.
@@ -155,7 +155,7 @@ def conv_transpose_size(size: Tensor, kernel_size: Tensor, stride: Tensor, paddi
     Returns:
         Tensor: The output size after the transposed convolution operation.
     """
-    return (size - 1) * stride + (kernel_size - 1) * dilation - 2 * padding + output_padding + 1
+    return (size - 1) * stride - 2 * padding + dilation * (kernel_size - 1) + output_padding + 1
 
 class ConvSize(nn.Module, Generic[_ConvNd]):
     """Module for computing the output size of a convolution operation.
