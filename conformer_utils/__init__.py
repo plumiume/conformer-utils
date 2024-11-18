@@ -140,13 +140,14 @@ def conv_size(size: Tensor, kernel_size: Tensor, stride: Tensor, padding: Tensor
         Tensor: The output size after the convolution operation.
     """
     a = 2 * padding
-    b = kernel_size - 1
-    c = dilation * b
-    d = size + c
-    e = d - 1
-    f = torch.floor_divide(e, stride)
-    g = f + 1
-    return g
+    b = size + a
+    c = kernel_size - 1
+    d = dilation * c
+    e = b - d
+    f = e - 1
+    g = torch.floor_divide(f, stride)
+    h = g + 1
+    return h
     # return torch.floor_divide(size + 2 * padding - dilation * (kernel_size - 1) - 1, stride) + 1
 
 def conv_transpose_size(size: Tensor, kernel_size: Tensor, stride: Tensor, padding: Tensor, dilation: Tensor, output_padding: Tensor) -> Tensor:
