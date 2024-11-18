@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import TypeVar, Generic
+from typing import TypeVar, Generic, overload
 
 import torch
 import torch.nn as nn
@@ -139,7 +139,15 @@ def conv_size(size: Tensor, kernel_size: Tensor, stride: Tensor, padding: Tensor
     Returns:
         Tensor: The output size after the convolution operation.
     """
-    return torch.floor_divide((size + 2 * padding - dilation * (kernel_size - 1) - 1), stride) + 1
+    a = 2 * padding
+    b = kernel_size - 1
+    c = dilation * b
+    d = size + c
+    e = d - 1
+    f = torch.floor_divide(e, stride)
+    g = f + 1
+    return g
+    # return torch.floor_divide(size + 2 * padding - dilation * (kernel_size - 1) - 1, stride) + 1
 
 def conv_transpose_size(size: Tensor, kernel_size: Tensor, stride: Tensor, padding: Tensor, dilation: Tensor, output_padding: Tensor) -> Tensor:
     """Compute the output size of a transposed convolution operation.
@@ -171,7 +179,11 @@ class ConvSize(nn.Module, Generic[_ConvNd]):
         self.padding = torch.nn.Parameter(torch.tensor(conv_module.padding), requires_grad=False)
         self.dilation = torch.nn.Parameter(torch.tensor(conv_module.dilation), requires_grad=False)
 
-    def forward(self, size: Tensor, tgt_dim: int | slice = slice(None)) -> Tensor:
+    @overload
+    def forward(self, size: Tensor, tgt_dim: int | slice = slice(None)) -> Tensor: ...
+    @overload
+    def forward(self, arg: tuple[Tensor, int | slice]) -> Tensor: ...
+    def forward(self, arg1: Tensor | tuple[Tensor, int | slice], arg2: int | slice = slice(None)) -> Tensor:
         """Compute the output size of a convolution operation for a given input size.
 
         Args:
@@ -181,6 +193,11 @@ class ConvSize(nn.Module, Generic[_ConvNd]):
         Returns:
             Tensor: The output size after the convolution operation.
         """
+        if isinstance(arg1, tuple):
+            size, tgt_dim, *_ = arg1
+        else:
+            size = arg1; tgt_dim = arg2
+
         return conv_size(
             size,
             self.kernel_size[tgt_dim],
