@@ -139,16 +139,7 @@ def conv_size(size: Tensor, kernel_size: Tensor, stride: Tensor, padding: Tensor
     Returns:
         Tensor: The output size after the convolution operation.
     """
-    a = 2 * padding
-    b = size + a
-    c = kernel_size - 1
-    d = dilation * c
-    e = b - d
-    f = e - 1
-    g = torch.floor_divide(f, stride)
-    h = g + 1
-    return h
-    # return torch.floor_divide(size + 2 * padding - dilation * (kernel_size - 1) - 1, stride) + 1
+    return torch.floor_divide(size + 2 * padding - dilation * (kernel_size - 1) - 1, stride) + 1
 
 def conv_transpose_size(size: Tensor, kernel_size: Tensor, stride: Tensor, padding: Tensor, dilation: Tensor, output_padding: Tensor) -> Tensor:
     """Compute the output size of a transposed convolution operation.
@@ -181,31 +172,57 @@ class ConvSize(nn.Module, Generic[_ConvNd]):
         self.dilation = torch.nn.Parameter(torch.tensor(conv_module.dilation), requires_grad=False)
 
     @overload
-    def forward(self, size: Tensor, tgt_dim: int | slice = slice(None)) -> Tensor: ...
+    def forward(self, tensor: Tensor, tgt_dim: int | slice = slice(None)) -> Tensor: ...
     @overload
-    def forward(self, arg: tuple[Tensor, int | slice]) -> Tensor: ...
-    def forward(self, arg1: Tensor | tuple[Tensor, int | slice], arg2: int | slice = slice(None)) -> Tensor:
+    def forward(self, size: Size, tgt_dim: int | slice = slice(None)) -> Size: ...
+    @overload
+    def forward(self, args: tuple[Tensor, int | slice], /) -> tuple[Tensor, int | slice]: ...
+    def forward(self, arg1: Tensor | Size | tuple[Tensor | Size, int | slice], arg2: int | slice = slice(None)) -> Tensor:
         """Compute the output size of a convolution operation for a given input size.
 
+        This method calculates the resulting size after applying a convolution operation
+        based on the input size, target dimensions, and convolution module parameters.
+
         Args:
-            size (Tensor): Input size.
-            tgt_dim (int | slice, optional): Target dimension. Defaults to slice(None).
+            arg1 (Tensor | Size | tuple): Input size, which can be:
+                - A `Tensor` representing the input size for each dimension.
+                - A `Size` object (torch.Size) representing the input size in PyTorch's native format.
+                - A tuple containing:
+                    - A `Tensor` as the first element.
+                    - A target dimension (`int` or `slice`) as the second element.
+            arg2 (int | slice, optional): Target dimension(s) to apply the convolution. 
+                Ignored if `arg1` is a tuple. Defaults to `slice(None)` (all dimensions).
 
         Returns:
-            Tensor: The output size after the convolution operation.
-        """
-        if isinstance(arg1, tuple):
-            size, tgt_dim, *_ = arg1
-        else:
-            size = arg1; tgt_dim = arg2
+            Tensor | Size | tuple: The computed output size:
+                - If the input is a `Tensor`, returns a `Tensor` with the output size.
+                - If the input is a `Size`, returns a `Size` object.
+                - If the input is a tuple, returns a tuple containing the computed size and target dimensions.
 
-        return conv_size(
-            size,
-            self.kernel_size[tgt_dim],
-            self.stride[tgt_dim],
-            self.padding[tgt_dim],
-            self.dilation[tgt_dim]
-        )
+        Raises:
+            TypeError: If `arg1` is not one of the supported types:
+                `Tensor`, `Size`, or `tuple` of `Tensor` and target index.
+        """
+
+        if isinstance(arg1, tuple):
+            # for torch.nn.Sequential
+            return self._forward_tensor(*arg1), arg2
+        elif isinstance(arg1, Tensor):
+            return self._forward_tensor(arg1, arg2)
+        elif isinstance(arg1, Size):
+            return self._forward_size(arg1)
+        else:
+            raise TypeError()
+
+    def _forward_tensor(self, tensor: Tensor, tgt_dim: int | slice):
+        return conv_size(tensor, self.kernel_size[tgt_dim], self.stride[tgt_dim], self.padding[tgt_dim], self.dilation[tgt_dim])
+
+    def _forward_size(self, size: Size):
+        change_dimention = len(self.kernel_size)
+        target = size[-change_dimention:]
+        unchange = size[:-change_dimention]
+        changed = torch.Size(conv_size(torch.tensor(target), self.kernel_size, self.stride, self.padding, self.dilation))
+        return unchange + changed
 
 class ConvTransposeSize(nn.Module, Generic[_ConvTransposeNd]):
     """Module for computing the output size of a transposed convolution operation.
