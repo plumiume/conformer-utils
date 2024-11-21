@@ -206,7 +206,8 @@ class ConvSize(nn.Module, Generic[_ConvNd]):
 
         if isinstance(arg1, tuple):
             # for torch.nn.Sequential
-            return self._forward_tensor(*arg1), arg2
+            tensor, tgt_dim = arg1
+            return self._forward_tensor(tensor, tgt_dim), tgt_dim
         elif isinstance(arg1, Tensor):
             return self._forward_tensor(arg1, arg2)
         elif isinstance(arg1, Size):
