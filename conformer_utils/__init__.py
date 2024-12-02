@@ -108,7 +108,7 @@ def edit_distans(a: Tensor, alen: Tensor, b: Tensor, blen: Tensor) -> Tensor:
 
     return y
 
-def word_error_rate(r: Tensor, rlen: Tensor, h: Tensor, hlen: Tensor) -> Tensor:
+def word_error_rate(r: Tensor, rlen: Tensor, h: Tensor, hlen: Tensor, normalize: bool = True) -> Tensor:
     """Compute the Word Error Rate (WER) between reference and hypothesis sequences.
 
     Args:
@@ -122,9 +122,10 @@ def word_error_rate(r: Tensor, rlen: Tensor, h: Tensor, hlen: Tensor) -> Tensor:
     """
     dist = edit_distans(r, rlen, h, hlen)
 
-    wer = dist / rlen
-
-    return wer
+    if normalize:
+        return dist / rlen
+    else:
+        return dist
 
 def conv_size(size: Tensor, kernel_size: Tensor, stride: Tensor, padding: Tensor, dilation: Tensor) -> Tensor:
     """Compute the output size of a convolution operation.
