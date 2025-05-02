@@ -160,12 +160,13 @@ def conv_transpose_size(size: Tensor, kernel_size: Tensor, stride: Tensor, paddi
 
 class ConvSize(nn.Module, Generic[_ConvNd]):
     """Module for computing the output size of a convolution operation.
-
-    Args:
-        conv_module (_ConvNd): Convolution module (Conv1d, Conv2d, Conv3d).
     """
 
     def __init__(self, conv_module: _ConvNd):
+        """"
+        Args:
+            conv_module (_ConvNd): Convolution module (Conv1d, Conv2d, Conv3d).
+        """
         super().__init__()
         self.kernel_size = torch.nn.Parameter(torch.tensor(conv_module.kernel_size), requires_grad=False)
         self.stride = torch.nn.Parameter(torch.tensor(conv_module.stride), requires_grad=False)
