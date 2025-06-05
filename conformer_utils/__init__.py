@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import TypeVar, Generic, overload
+from typing import TypeVar, Generic, Literal, overload
 
 import torch
 import torch.nn as nn
@@ -35,7 +35,7 @@ def _batch_check(*batches: Size) -> Size:
         TypeError: If any of the batch sizes are not equal.
     """
     if not batches:
-        return
+        return torch.Size()
 
     b0, *bs = batches
     for b in bs:
@@ -60,38 +60,75 @@ def ctc_decode(x: Tensor, xlen: Tensor, blank: int = 0, padding_value: int = 0) 
     """
     batch = _batch_check(x.shape[:-1], xlen.shape)
 
-    size = torch.tensor(batch).prod().item()
+    size = int(torch.tensor(batch).prod().item())
 
     x = x.reshape(size, -1)
     xlen = xlen.reshape(size)
 
+    results1: list[tuple[Tensor]] = [
+        torch.unique_consecutive(xi[xi != blank][:xleni], return_inverse=True)
+        for xi, xleni in zip(x, xlen)
+    ]
+    outputs = [ur[0] for ur in results1]
+
     y = nn.utils.rnn.pad_sequence(
-        [
-            torch.unique_consecutive(xi[xi != blank][:xleni])
-            for xi, xleni in zip(x, xlen)
-        ],
-        batch_first=True, padding_value=padding_value
+        outputs, batch_first=True, padding_value=padding_value
     ).reshape(*batch, -1)
 
     ylen = (y != padding_value).sum(-1)
 
     return y, ylen
 
+def ctc_decode_with_indices(x: Tensor, xlen: Tensor, blank: int = 0, padding_value: int = 0) -> tuple[Tensor, Tensor, Tensor]:
+    """Perform Connectionist Temporal Classification (CTC) decoding with inverse indices.
+    Args:
+        x (Tensor): The input tensor of shape (batch, time, features).
+        xlen (Tensor): Lengths of the input sequences in `x`.
+        blank (int, optional): The index representing the blank label. Defaults to 0.
+        padding_value (int, optional): The value used for padding sequences. Defaults to 0.
+    Returns:
+        tuple[Tensor, Tensor, Tensor]: A tuple containing:
+            - `y` (Tensor): The decoded output tensor.
+            - `ylen` (Tensor): Lengths of the decoded sequences.
+            - `inverse_indices` (Tensor): Indices mapping the original sequence to the decoded sequence.
+    """
+
+    batch = _batch_check(x.shape[:-1], xlen.shape)
+
+    size = int(torch.tensor(batch).prod().item())
+
+    x = x.reshape(size, -1)
+    xlen = xlen.reshape(size)
+
+    results2: list[tuple[Tensor, Tensor]] = [
+        torch.unique_consecutive(xi[xi != blank][:xleni], return_inverse=True)
+        for xi, xleni in zip(x, xlen)
+    ]
+    outputs = [ur[0] for ur in results2]
+    inverse_indices = [ur[1] for ur in results2]
+
+    y = nn.utils.rnn.pad_sequence(
+        outputs, batch_first=True, padding_value=padding_value
+    ).reshape(*batch, -1)
+
+    ylen = (y != padding_value).sum(-1)
+
+    return y, ylen, torch.stack(inverse_indices, dim=0)
+
 def edit_distans(a: Tensor, alen: Tensor, b: Tensor, blen: Tensor) -> Tensor:
     """Compute the edit distance between two sequences of tensors.
 
     Args:
-        a (Tensor): First sequence tensor.
-        alen (Tensor): Lengths of the sequences in `a`.
-        b (Tensor): Second sequence tensor.
-        blen (Tensor): Lengths of the sequences in `b`.
+        a (Tensor): First sequence tensor, with shape (*B, L).
+        alen (Tensor): Lengths of the sequences in `a`, with shape (*B).
+        b (Tensor): Second sequence tensor, with shape (*B, L').
+        blen (Tensor): Lengths of the sequences in `b`, with shape (*B).
 
     Returns:
         Tensor: The computed edit distances between each pair of sequences in `a` and `b`.
     """
     batch = _batch_check(a.shape[:-1], alen.shape, b.shape[:-1], blen.shape)
-
-    size = torch.tensor(batch).prod().item()
+    size = int(torch.tensor(batch).prod().item())
 
     a = a.reshape(size, -1)
     alen = alen.reshape(size)
@@ -112,10 +149,11 @@ def word_error_rate(r: Tensor, rlen: Tensor, h: Tensor, hlen: Tensor, normalize:
     """Compute the Word Error Rate (WER) between reference and hypothesis sequences.
 
     Args:
-        r (Tensor): Reference sequences.
-        rlen (Tensor): Lengths of the reference sequences.
-        h (Tensor): Hypothesis sequences.
-        hlen (Tensor): Lengths of the hypothesis sequences.
+        r (Tensor): Reference sequences, with shape (*B, L).
+        rlen (Tensor): Lengths of the reference sequences, with shape (*B).
+        h (Tensor): Hypothesis sequences, with shape (*B, L').
+        hlen (Tensor): Lengths of the hypothesis sequences, with shape (*B).
+        normalize (bool, optional): Whether to normalize the WER by the length of the reference sequences. Defaults to True.
 
     Returns:
         Tensor: The computed Word Error Rate (WER) for each sequence.
@@ -126,6 +164,24 @@ def word_error_rate(r: Tensor, rlen: Tensor, h: Tensor, hlen: Tensor, normalize:
         return dist / rlen
     else:
         return dist
+
+# def is_error(r: Tensor, rlen: Tensor, h: Tensor, hlen: Tensor) -> Tensor:
+
+#     batch = _batch_check(r.shape[:-1], rlen.shape, h.shape[:-1], hlen.shape)
+#     size = torch.tensor(batch).prod().item()
+
+#     r = r.reshape(size, -1)
+#     rlen = rlen.reshape(size)
+#     h = h.reshape(size, -1)
+#     hlen = hlen.reshape(size)
+
+#     return torch.tensor(
+#         [
+#             torch.unique(torch.cat([r[:rlen]]))
+#             for ri, rleni, hi, hlenti in zip(r, rlen, h, hlen)
+#         ]
+#         device=r.device
+#     ).reshape(batch)
 
 def conv_size(size: Tensor, kernel_size: Tensor, stride: Tensor, padding: Tensor, dilation: Tensor) -> Tensor:
     """Compute the output size of a convolution operation.
@@ -179,7 +235,7 @@ class ConvSize(nn.Module, Generic[_ConvNd]):
     def forward(self, size: Size, tgt_dim: int | slice = slice(None)) -> Size: ...
     @overload
     def forward(self, args: tuple[Tensor, int | slice], /) -> tuple[Tensor, int | slice]: ...
-    def forward(self, arg1: Tensor | Size | tuple[Tensor | Size, int | slice], arg2: int | slice = slice(None)) -> Tensor:
+    def forward(self, arg1: Tensor | Size | tuple[Tensor | Size, int | slice], arg2: int | slice = slice(None)) -> Tensor | Size | tuple[Tensor, int | slice]: # type: ignore[reportInconsistentOverload]
         """Compute the output size of a convolution operation for a given input size.
 
         This method calculates the resulting size after applying a convolution operation
@@ -209,7 +265,7 @@ class ConvSize(nn.Module, Generic[_ConvNd]):
         if isinstance(arg1, tuple):
             # for torch.nn.Sequential
             tensor, tgt_dim = arg1
-            return self._forward_tensor(tensor, tgt_dim), tgt_dim
+            return self._forward_tensor(torch.tensor(tensor), tgt_dim), tgt_dim
         elif isinstance(arg1, Tensor):
             return self._forward_tensor(arg1, arg2)
         elif isinstance(arg1, Size):
@@ -224,8 +280,11 @@ class ConvSize(nn.Module, Generic[_ConvNd]):
         change_dimention = len(self.kernel_size)
         target = size[-change_dimention:]
         unchange = size[:-change_dimention]
-        changed = torch.Size(conv_size(torch.tensor(target), self.kernel_size, self.stride, self.padding, self.dilation))
-        return unchange + changed
+        changed = Size(conv_size(torch.tensor(target), self.kernel_size, self.stride, self.padding, self.dilation).tolist())
+        return Size(unchange + changed)
+
+    def extra_repr(self):
+        return f"kernel_size={self.kernel_size}, stride={self.stride}, padding={self.padding}, dilation={self.dilation}"
 
 class ConvTransposeSize(nn.Module, Generic[_ConvTransposeNd]):
     """Module for computing the output size of a transposed convolution operation.
@@ -234,7 +293,7 @@ class ConvTransposeSize(nn.Module, Generic[_ConvTransposeNd]):
         conv_module (_ConvNd): Transposed convolution module (ConvTranspose1d, ConvTranspose2d, ConvTranspose3d).
     """
 
-    def __init__(self, conv_module: _ConvNd):
+    def __init__(self, conv_module: _ConvTransposeNd):
         super().__init__()
         self.kernel_size = nn.Parameter(conv_module.kernel_size, requires_grad=False)
         self.stride = nn.Parameter(conv_module.stride, requires_grad=False)
