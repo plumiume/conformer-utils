@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import TypeVar, Generic, Literal, overload
+from typing import TypeVar, Generic, Generator, overload
 
 import torch
 import torch.nn as nn
@@ -65,11 +65,11 @@ def ctc_decode(x: Tensor, xlen: Tensor, blank: int = 0, padding_value: int = 0) 
     x = x.reshape(size, -1)
     xlen = xlen.reshape(size)
 
-    results1: list[tuple[Tensor]] = [
+    results1: Generator[tuple[Tensor], None, None] = (
         torch.unique_consecutive(xi[xi != blank][:xleni], return_inverse=True)
         for xi, xleni in zip(x, xlen)
-    ]
-    outputs = [ur[0] for ur in results1]
+    )
+    outputs = (ur[0] for ur in results1)
 
     y = nn.utils.rnn.pad_sequence(
         outputs, batch_first=True, padding_value=padding_value
@@ -100,11 +100,11 @@ def ctc_decode_with_indices(x: Tensor, xlen: Tensor, blank: int = 0, padding_val
     x = x.reshape(size, -1)
     xlen = xlen.reshape(size)
 
-    results2: list[tuple[Tensor, Tensor]] = [
+    results2: Generator[tuple[Tensor, Tensor], None, None] = (
         torch.unique_consecutive(xi[xi != blank][:xleni], return_inverse=True)
         for xi, xleni in zip(x, xlen)
-    ]
-    outputs = [ur[0] for ur in results2]
+    )
+    outputs = (ur[0] for ur in results2)
     inverse_indices = [ur[1] for ur in results2]
 
     y = nn.utils.rnn.pad_sequence(
